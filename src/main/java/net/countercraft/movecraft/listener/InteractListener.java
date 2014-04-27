@@ -40,6 +40,8 @@ import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
+import com.massivecraft.factions.entity.UPlayer;
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -103,6 +105,7 @@ public class InteractListener implements Listener {
 	private void onSignRightClick( PlayerInteractEvent event ) {
 		Sign sign = ( Sign ) event.getClickedBlock().getState();
 		String signText = sign.getLine( 0 );
+		UPlayer captain = UPlayer.get( event.getPlayer() );
 
 		if ( signText == null ) {
 			return;
@@ -115,44 +118,44 @@ public class InteractListener implements Listener {
 				return;
 		}
 
+		if ( getCraftTypeFromString( sign.getLine( 0 ) ) != null )
+		{
+			// this is a valid airship sign
+			String name = sign.getLine( 1 );
+			String faction = sign.getLine( 2 );
 
-		if ( getCraftTypeFromString( sign.getLine( 0 ) ) != null ) {
+			// Lines 1 and 2 blank, unclaimed, so continue:
+			if ( (name == null && faction == null) || (name.trim().equals("") && faction.trim().equals("")) )
+			{
+				// Make this the owner.	
+				sign.setLine( 1, captain.getName() );
 
-			// Valid sign prompt for ship command.
-			if ( event.getPlayer().hasPermission( "movecraft." + sign.getLine( 0 ) + ".pilot" ) ) {
-				// Attempt to run detection
-				Location loc = event.getClickedBlock().getLocation();
-				MovecraftLocation startPoint = new MovecraftLocation( loc.getBlockX(), loc.getBlockY(), loc.getBlockZ() );
-				final Craft c = new Craft( getCraftTypeFromString( sign.getLine( 0 ) ), loc.getWorld() );
+				// does the player have a faction?
+				sign.setLine( 2, captain.getFaction().getName() );
+				sign.update( true );
 				
-				if(c.getType().getCruiseOnPilot()==true) {
-					c.detect( null, startPoint );
-					c.setCruiseDirection(sign.getRawData());
-					c.setLastCruisUpdate(System.currentTimeMillis());
-					c.setCruising(true);
-					BukkitTask releaseTask = new BukkitRunnable() {
-
-						@Override
-						public void run() {
-							CraftManager.getInstance().removeCraft( c );
-						}
-
-					}.runTaskLater( Movecraft.getInstance(), ( 20 * 15 ) );
-//					CraftManager.getInstance().getReleaseEvents().put( event.getPlayer(), releaseTask );
-				} else {
-					if ( CraftManager.getInstance().getCraftByPlayer( event.getPlayer() ) == null ) {
-						c.detect( event.getPlayer(), startPoint );
-					} else {
-						Craft oldCraft=CraftManager.getInstance().getCraftByPlayer( event.getPlayer() );
-						CraftManager.getInstance().removeCraft( oldCraft );
-						c.detect( event.getPlayer(), startPoint );
+				onValidSignClick(event, sign);
+				
+			} else {
+				// we has name?
+				if (name != null || name.trim().equals("")) {
+					// yus
+					if ( (name.equalsIgnoreCase( captain.getName() ) ) ) {
+						onValidSignClick(event, sign);
 					}
 				}
-				
-				event.setCancelled( true );
-			} else {
-			event.getPlayer().sendMessage( String.format( I18nSupport.getInternationalisedString( "Insufficient Permissions" ) ) );
+			
+				// we have a faction name
+				if ( faction.equalsIgnoreCase( captain.getFaction().getName() ) ) {
+					// faction matches.
+					onValidSignClick(event, sign);
 
+				} else {
+					// neither match.
+					sign.setLine( 3, "no match" );
+					sign.update( true );
+				}
+				 event.setCancelled( true );
 			}
 
 		} else if ( sign.getLine( 0 ).equalsIgnoreCase( "[helm]" ) ) {
@@ -337,6 +340,46 @@ public class InteractListener implements Listener {
 		}
 	}
 
+	private void onValidSignClick ( PlayerInteractEvent event, Sign sign )
+	{
+		// Valid sign prompt for ship command.
+		if ( event.getPlayer().hasPermission( "movecraft." + sign.getLine( 0 ) + ".pilot" ) ) {
+			// Attempt to run detection
+			Location loc = event.getClickedBlock().getLocation();
+			MovecraftLocation startPoint = new MovecraftLocation( loc.getBlockX(), loc.getBlockY(), loc.getBlockZ() );
+			final Craft c = new Craft( getCraftTypeFromString( sign.getLine( 0 ) ), loc.getWorld() );
+			
+			if(c.getType().getCruiseOnPilot()==true) {
+				c.detect( null, startPoint );
+				c.setCruiseDirection(sign.getRawData());
+				c.setLastCruisUpdate(System.currentTimeMillis());
+				c.setCruising(true);
+				BukkitTask releaseTask = new BukkitRunnable() {
+
+					@Override
+					public void run() {
+						CraftManager.getInstance().removeCraft( c );
+					}
+
+				}.runTaskLater( Movecraft.getInstance(), ( 20 * 15 ) );
+//				CraftManager.getInstance().getReleaseEvents().put( event.getPlayer(), releaseTask );
+			} else {
+				if ( CraftManager.getInstance().getCraftByPlayer( event.getPlayer() ) == null ) {
+					c.detect( event.getPlayer(), startPoint );
+				} else {
+					Craft oldCraft=CraftManager.getInstance().getCraftByPlayer( event.getPlayer() );
+					CraftManager.getInstance().removeCraft( oldCraft );
+					c.detect( event.getPlayer(), startPoint );
+				}
+			}
+			
+			event.setCancelled( true );
+		} else {
+		event.getPlayer().sendMessage( String.format( I18nSupport.getInternationalisedString( "Insufficient Permissions" ) ) );
+
+		}
+	}
+	
 	private CraftType getCraftTypeFromString( String s ) {
 		for ( CraftType t : CraftManager.getInstance().getCraftTypes() ) {
 			if ( s.equalsIgnoreCase( t.getCraftName() ) ) {
